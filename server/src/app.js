@@ -40,6 +40,7 @@ const allowedOrigins = [
   'http://localhost:5174',
   'http://127.0.0.1:5174',
   'http://localhost:3000',
+  'https://shriji-namkeen.onrender.com',
   process.env.FRONTEND_URL
 ].filter(Boolean);
 
@@ -90,22 +91,27 @@ app.use('/api/settings', settingRoutes);
 app.use('/api/upload', uploadRoutes);
 
 // Serve static client assets in production if built
-const clientDistDir = path.resolve(__dirname, '../../client/dist');
-const indexHtmlPath = path.join(clientDistDir, 'index.html');
-if (fs.existsSync(clientDistDir)) {
-  app.use(express.static(clientDistDir));
-}
+const possibleDistPaths = [
+  path.resolve(__dirname, '../../client/dist'),
+  path.resolve(process.cwd(), '../client/dist'),
+  path.resolve(process.cwd(), 'client/dist'),
+  path.resolve(__dirname, '../../../client/dist')
+];
 
-// SPA fallback for all non-API and non-upload routes
-app.get('*', (req, res, next) => {
-  if (req.originalUrl.startsWith('/api') || req.originalUrl.startsWith('/uploads')) {
-    return next();
-  }
-  if (fs.existsSync(indexHtmlPath)) {
-    return res.sendFile(indexHtmlPath);
-  }
-  next();
-});
+const clientDistDir = possibleDistPaths.find((p) => fs.existsSync(p));
+const indexHtmlPath = clientDistDir ? path.join(clientDistDir, 'index.html') : null;
+
+if (clientDistDir && fs.existsSync(indexHtmlPath)) {
+  app.use(express.static(clientDistDir));
+
+  // SPA fallback for all non-API and non-upload routes
+  app.get('*', (req, res, next) => {
+    if (req.originalUrl.startsWith('/api') || req.originalUrl.startsWith('/uploads')) {
+      return next();
+    }
+    res.sendFile(indexHtmlPath);
+  });
+}
 
 // Error handlers
 app.use(notFound);
