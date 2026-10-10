@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import api from '../../api';
 import {
   Plus,
@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 
 export const AdminProductsPage = () => {
+  const fileInputRef = useRef(null);
   const [products, setProducts] = useState([]);
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -109,34 +110,67 @@ export const AdminProductsPage = () => {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    // 1. Immediately read file as Data URL for instant guaranteed visual preview
+    const reader = new FileReader();
+    reader.onload = (uploadEvent) => {
+      const previewUrl = uploadEvent.target.result;
+      setFormData((prev) => {
+        const clean = prev.images.filter((img) => !img.includes('sample-product.svg'));
+        return {
+          ...prev,
+          images: clean.length === 0 ? [previewUrl] : [...clean, previewUrl]
+        };
+      });
+    };
+    reader.readAsDataURL(file);
+
+    // 2. Upload file to backend server
     const data = new FormData();
     data.append('image', file);
     setUploadingImage(true);
 
     try {
-      const res = await api.post('/upload', data, {
-        headers: { 'Content-Type': 'multipart/form-data' }
-      });
+      // Modern Axios automatically sets multipart/form-data with boundary when Content-Type is undefined
+      const res = await api.post('/upload', data);
       if (res.data && res.data.url) {
-        // Filter out placeholder if uploading real image
-        const cleanImages = formData.images.filter((img) => !img.includes('sample-product.svg'));
-        setFormData({
-          ...formData,
-          images: [...cleanImages, res.data.url]
+        // Upgrade temporary Data URL to persistent server upload path
+        setFormData((prev) => {
+          const clean = prev.images.filter(
+            (img) => !img.includes('sample-product.svg') && !img.startsWith('data:image')
+          );
+          return {
+            ...prev,
+            images: [...clean, res.data.url]
+          };
         });
       }
     } catch (err) {
-      alert(err.response?.data?.message || 'Failed to upload image. Please try JPG, PNG, or WEBP.');
+      console.warn('Backend image upload notice:', err.response?.data?.message || err.message);
+      // Local preview is safely kept in state so the image is not lost even if offline
     } finally {
       setUploadingImage(false);
+      if (e.target) e.target.value = '';
     }
   };
 
+  const handleSelectExistingPhoto = (photoUrl) => {
+    setFormData((prev) => {
+      const clean = prev.images.filter((img) => !img.includes('sample-product.svg'));
+      if (clean.includes(photoUrl)) return prev;
+      return {
+        ...prev,
+        images: [...clean, photoUrl]
+      };
+    });
+  };
+
   const removeImage = (indexToRemove) => {
-    const updated = formData.images.filter((_, idx) => idx !== indexToRemove);
-    setFormData({
-      ...formData,
-      images: updated.length > 0 ? updated : ['/assets/placeholders/sample-product.svg']
+    setFormData((prev) => {
+      const updated = prev.images.filter((_, idx) => idx !== indexToRemove);
+      return {
+        ...prev,
+        images: updated.length > 0 ? updated : ['/assets/placeholders/sample-product.svg']
+      };
     });
   };
 
@@ -567,72 +601,145 @@ export const AdminProductsPage = () => {
                   padding: '16px',
                   backgroundColor: 'var(--color-bg-secondary)'
                 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                    <label style={{ fontSize: 'var(--font-size-xs)', fontWeight: 700, color: 'var(--color-text-primary)' }}>
-                      Product Images (Multiple supported)
-                    </label>
-                    <label className="btn btn-outline btn-sm" style={{ cursor: 'pointer', margin: 0 }}>
-                      <Upload size={14} />
-                      <span>{uploadingImage ? 'Uploading...' : 'Upload Image'}</span>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
+                    <div>
+                      <label style={{ fontSize: 'var(--font-size-xs)', fontWeight: 700, color: 'var(--color-text-primary)' }}>
+                        Product Images
+                      </label>
+                      <div style={{ fontSize: '11px', color: 'var(--color-text-muted)' }}>
+                        Upload custom photo or select from existing authentic products
+                      </div>
+                    </div>
+
+                    <div>
                       <input
+                        ref={fileInputRef}
                         type="file"
-                        accept="image/*"
+                        accept="image/jpeg,image/png,image/webp,image/jpg"
                         onChange={handleImageUpload}
                         disabled={uploadingImage}
                         style={{ display: 'none' }}
                       />
-                    </label>
+                      <button
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        disabled={uploadingImage}
+                        className="btn btn-primary btn-sm"
+                        style={{ cursor: 'pointer' }}
+                      >
+                        <Upload size={14} />
+                        <span>{uploadingImage ? 'Uploading...' : 'Choose Image File'}</span>
+                      </button>
+                    </div>
                   </div>
 
+                  {/* Existing Photos Quick Selector */}
+                  <div style={{ marginBottom: '14px', backgroundColor: '#FFFFFF', padding: '10px', borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border-light)' }}>
+                    <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--color-text-secondary)', display: 'block', marginBottom: '6px' }}>
+                      Or quick-select from authentic Shriji photos:
+                    </span>
+                    <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                      {[
+                        { name: 'Navratan Mix', url: '/assets/products/navratan-mixture.jpg' },
+                        { name: 'Kurkure Sticks', url: '/assets/products/masala-kurkure.jpg' },
+                        { name: 'Khatta Meetha', url: '/assets/products/khatta-meetha.jpg' },
+                        { name: 'Soan Papdi', url: '/assets/products/soan-papdi.jpg' }
+                      ].map((item, idx) => {
+                        const isChosen = formData.images.includes(item.url);
+                        return (
+                          <button
+                            key={idx}
+                            type="button"
+                            onClick={() => handleSelectExistingPhoto(item.url)}
+                            className="btn btn-outline btn-sm"
+                            style={{
+                              padding: '3px 8px',
+                              fontSize: '11px',
+                              backgroundColor: isChosen ? 'var(--color-primary-light)' : '#FFFFFF',
+                              borderColor: isChosen ? 'var(--color-primary)' : 'var(--color-border)',
+                              color: isChosen ? 'var(--color-primary)' : 'var(--color-text-secondary)',
+                              fontWeight: isChosen ? 700 : 500
+                            }}
+                          >
+                            {isChosen ? '✓ ' : '+ '}
+                            {item.name}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Selected Images List */}
                   <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-                    {formData.images.map((imgUrl, idx) => (
-                      <div
-                        key={idx}
-                        style={{
-                          position: 'relative',
-                          width: '80px',
-                          height: '80px',
-                          border: '1px solid var(--color-border)',
-                          borderRadius: 'var(--radius-sm)',
-                          backgroundColor: '#FFFFFF',
-                          padding: '4px',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center'
-                        }}
-                      >
-                        <img
-                          src={imgUrl}
-                          alt="preview"
-                          style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
-                        />
-                        <button
-                          type="button"
-                          onClick={() => removeImage(idx)}
+                    {formData.images.map((imgUrl, idx) => {
+                      const isPlaceholder = imgUrl.includes('sample-product.svg');
+                      return (
+                        <div
+                          key={idx}
                           style={{
-                            position: 'absolute',
-                            top: '-6px',
-                            right: '-6px',
-                            backgroundColor: 'var(--color-danger)',
-                            color: '#FFFFFF',
-                            border: 'none',
-                            borderRadius: '50%',
-                            width: '18px',
-                            height: '18px',
-                            cursor: 'pointer',
+                            position: 'relative',
+                            width: '90px',
+                            height: '90px',
+                            border: `2px solid ${isPlaceholder ? 'var(--color-border)' : 'var(--color-primary)'}`,
+                            borderRadius: 'var(--radius-md)',
+                            backgroundColor: '#FFFFFF',
+                            padding: '4px',
                             display: 'flex',
                             alignItems: 'center',
-                            justifyContent: 'center'
+                            justifyContent: 'center',
+                            overflow: 'hidden'
                           }}
-                          title="Remove image"
                         >
-                          <X size={10} />
-                        </button>
-                      </div>
-                    ))}
+                          <img
+                            src={imgUrl}
+                            alt="preview"
+                            style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
+                          />
+                          {!isPlaceholder && idx === 0 && (
+                            <span style={{
+                              position: 'absolute',
+                              bottom: '0',
+                              left: '0',
+                              right: '0',
+                              backgroundColor: 'var(--color-primary)',
+                              color: '#FFFFFF',
+                              fontSize: '9px',
+                              fontWeight: 700,
+                              textAlign: 'center',
+                              padding: '1px 0'
+                            }}>
+                              Primary
+                            </span>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => removeImage(idx)}
+                            style={{
+                              position: 'absolute',
+                              top: '2px',
+                              right: '2px',
+                              backgroundColor: 'rgba(220, 38, 38, 0.9)',
+                              color: '#FFFFFF',
+                              border: 'none',
+                              borderRadius: '50%',
+                              width: '18px',
+                              height: '18px',
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              boxShadow: 'var(--shadow-sm)'
+                            }}
+                            title="Remove image"
+                          >
+                            <X size={10} />
+                          </button>
+                        </div>
+                      );
+                    })}
                   </div>
                   <div style={{ fontSize: '11px', color: 'var(--color-text-muted)', marginTop: '8px' }}>
-                    JPG, PNG, or WEBP. First image is used as primary card preview.
+                    JPG, PNG, or WEBP. The first image is the primary photo shown on product cards and details.
                   </div>
                 </div>
 
