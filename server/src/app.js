@@ -13,6 +13,7 @@ import productRoutes from './routes/productRoutes.js';
 import orderRoutes from './routes/orderRoutes.js';
 import settingRoutes from './routes/settingRoutes.js';
 import uploadRoutes from './routes/uploadRoutes.js';
+import { serveUploadedMedia } from './controllers/uploadController.js';
 import { notFound, errorHandler } from './middleware/errorHandler.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -65,9 +66,10 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(cookieParser());
 
-// Static file serving for uploads
+// Static file serving for uploads (disk static first, MongoDB fallback second)
 const uploadDir = path.resolve(__dirname, '../uploads');
 app.use('/uploads', express.static(uploadDir));
+app.get('/uploads/:filename', serveUploadedMedia);
 
 // Fallback static serving for client assets
 const clientAssetsDir = path.resolve(__dirname, '../../client/public/assets');

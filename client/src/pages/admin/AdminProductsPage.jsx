@@ -106,47 +106,90 @@ export const AdminProductsPage = () => {
     setModalOpen(true);
   };
 
+const compressImage = (file, maxWidth = 1000, maxHeight = 1000, quality = 0.85) => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = reject;
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onerror = reject;
+      img.onload = () => {
+        let width = img.width;
+        let height = img.height;
+
+        if (width > height) {
+          if (width > maxWidth) {
+            height = Math.round((height * maxWidth) / width);
+            width = maxWidth;
+          }
+        } else {
+          if (height > maxHeight) {
+            width = Math.round((width * maxHeight) / height);
+            height = maxHeight;
+          }
+        }
+
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
+
+        const dataUrl = canvas.toDataURL('image/jpeg', quality);
+        canvas.toBlob(
+          (blob) => {
+            resolve({ blob: blob || file, dataUrl });
+          },
+          'image/jpeg',
+          quality
+        );
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+};
+
   const handleImageUpload = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // 1. Immediately read file as Data URL for instant guaranteed visual preview
-    const reader = new FileReader();
-    reader.onload = (uploadEvent) => {
-      const previewUrl = uploadEvent.target.result;
+    setUploadingImage(true);
+    setModalError('');
+
+    try {
+      // 1. Instantly compress image in browser for fast upload and permanent reliability
+      const { blob, dataUrl } = await compressImage(file);
+
+      // Show immediate preview
       setFormData((prev) => {
         const clean = prev.images.filter((img) => !img.includes('sample-product.svg'));
         return {
           ...prev,
-          images: clean.length === 0 ? [previewUrl] : [...clean, previewUrl]
+          images: clean.length === 0 ? [dataUrl] : [...clean, dataUrl]
         };
       });
-    };
-    reader.readAsDataURL(file);
 
-    // 2. Upload file to backend server
-    const data = new FormData();
-    data.append('image', file);
-    setUploadingImage(true);
+      // 2. Upload compressed blob to backend
+      const data = new FormData();
+      data.append('image', blob, file.name.replace(/\.[^/.]+$/, '') + '.jpg');
 
-    try {
-      // Modern Axios automatically sets multipart/form-data with boundary when Content-Type is undefined
       const res = await api.post('/upload', data);
       if (res.data && res.data.url) {
         // Upgrade temporary Data URL to persistent server upload path
         setFormData((prev) => {
           const clean = prev.images.filter(
-            (img) => !img.includes('sample-product.svg') && !img.startsWith('data:image')
+            (img) => !img.includes('sample-product.svg') && img !== dataUrl
           );
           return {
             ...prev,
-            images: [...clean, res.data.url]
+            images: clean.length === 0 ? [res.data.url] : [...clean, res.data.url]
           };
         });
       }
     } catch (err) {
       console.warn('Backend image upload notice:', err.response?.data?.message || err.message);
-      // Local preview is safely kept in state so the image is not lost even if offline
+      // Preview Data URL remains safely preserved in state so user image is never lost
     } finally {
       setUploadingImage(false);
       if (e.target) e.target.value = '';
@@ -615,7 +658,7 @@ export const AdminProductsPage = () => {
                       <input
                         ref={fileInputRef}
                         type="file"
-                        accept="image/jpeg,image/png,image/webp,image/jpg"
+                        accept="image/*"
                         onChange={handleImageUpload}
                         disabled={uploadingImage}
                         style={{ display: 'none' }}
@@ -951,10 +994,10 @@ export const AdminProductsPage = () => {
               <button
                 type="submit"
                 form="product-form"
-                disabled={isSubmitting}
+                disabled={isSubmitting || uploadingImage}
                 className="btn btn-primary btn-sm"
               >
-                {isSubmitting ? 'Saving...' : isEditing ? 'Update Product' : 'Create Product'}
+                {uploadingImage ? 'Uploading Image...' : isSubmitting ? 'Saving...' : isEditing ? 'Update Product' : 'Create Product'}
               </button>
             </div>
           </div>
