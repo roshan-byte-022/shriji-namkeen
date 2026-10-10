@@ -1,0 +1,26 @@
+services:
+  - type: web
+    name: shriji-namkeen
+    env: node
+    plan: free
+    region: singapore
+    buildCommand: npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: MONGODB_URI
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_EXPIRES_IN
+        value: 7d
+      - key: ADMIN_DEFAULT_EMAIL
+        value: admin@shrijinamkeen.com
+      - key: ADMIN_DEFAULT_PASSWORD
+        value: Admin@Shriji123
+      - key: ADMIN_DEFAULT_NAME
+        value: Shriji Management
+

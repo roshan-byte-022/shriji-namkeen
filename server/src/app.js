@@ -4,6 +4,7 @@ import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
 import morgan from 'morgan';
 import path from 'path';
+import fs from 'fs';
 import { fileURLToPath } from 'url';
 
 import authRoutes from './routes/authRoutes.js';
@@ -87,6 +88,24 @@ app.use('/api/products', productRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/settings', settingRoutes);
 app.use('/api/upload', uploadRoutes);
+
+// Serve static client assets in production if built
+const clientDistDir = path.resolve(__dirname, '../../client/dist');
+const indexHtmlPath = path.join(clientDistDir, 'index.html');
+if (fs.existsSync(clientDistDir)) {
+  app.use(express.static(clientDistDir));
+}
+
+// SPA fallback for all non-API and non-upload routes
+app.get('*', (req, res, next) => {
+  if (req.originalUrl.startsWith('/api') || req.originalUrl.startsWith('/uploads')) {
+    return next();
+  }
+  if (fs.existsSync(indexHtmlPath)) {
+    return res.sendFile(indexHtmlPath);
+  }
+  next();
+});
 
 // Error handlers
 app.use(notFound);

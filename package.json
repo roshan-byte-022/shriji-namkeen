@@ -5,6 +5,9 @@
   "scripts": {
     "dev:server": "cd server && npm run dev",
     "dev:client": "cd client && npm run dev",
-    "seed": "cd server && npm run seed"
+    "seed": "cd server && npm run seed",
+    "build": "npm --prefix server install && npm --prefix client install && npm --prefix client run build",
+    "start": "node server/index.js",
+    "install:all": "npm --prefix server install && npm --prefix client install"
   }
 }
